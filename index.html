@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Airsoft Shooting Arcade</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --danger:#ef4444;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6eef6;background:linear-gradient(180deg,#051226 0%, #071429 60%);}
+    body{display:flex;align-items:center;justify-content:center;padding:8px;}
+    .app{width:100%;max-width:600px;height:100%;display:flex;flex-direction:column;gap:12px;}
+    .panel, .play-area{background:var(--card);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:12px;}
+    .header{display:flex;align-items:center;gap:12px;}
+    .logo{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;}
+    h1{font-size:18px;margin:0;}
+    .muted{color:var(--muted);font-size:12px;}
+    .status{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;}
+    .credit{font-size:24px;font-weight:700;}
+    .small{font-size:12px;color:var(--muted);}
+    .btn{width:100%;padding:12px;border-radius:12px;border:0;background:linear-gradient(90deg,var(--accent),#7c3aed);color:#042027;font-weight:700;font-size:16px;cursor:pointer;transition: transform 0.1s;}
+    .btn:hover{transform: scale(1.03);}
+    .btn:active{transform: scale(0.97);}
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--muted);}
+    .big-btn{display:flex;flex-direction:column;gap:8px;}
+    .gun-view{flex:1;min-height:200px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+    .target{width:120px;height:120px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#ffc4c4, #ff7a7a 35%, transparent 36%), radial-gradient(circle at 70% 70%, #fff7c4, #ffd166 35%, transparent 36%);display:flex;align-items:center;justify-content:center;font-weight:900;color:#111;font-size:24px;box-shadow:0 6px 20px rgba(0,0,0,0.5);}
+    .shot-btn{width:100%;height:60px;border-radius:12px;font-size:18px;font-weight:900;cursor:pointer;}
+    .log{height:120px;overflow:auto;background:rgba(255,255,255,0.02);padding:8px;border-radius:10px;font-size:12px;color:var(--muted);}
+    video{width:100%;max-height:200px;border-radius:12px;background:#000;}
+    #timerDisplay{display:none;}
+    @media (max-width:480px){
+      .target{width:100px;height:100px;font-size:20px;}
+      .shot-btn{height:50px;font-size:16px;}
+      .logo{width:40px;height:40px;font-size:16px;}
+    }
+  </style>
+</head>
+<body>
+  <div class="app" role="application">
+    <div class="panel">
+      <div class="header">
+        <div class="logo">AS</div>
+        <div>
+          <h1>Airsoft Shooting Arcade</h1>
+        </div>
+      </div>
+
+      <div class="status">
+        <div>
+          <div class="small">CREDIT</div>
+          <div class="credit" id="credit">₱0</div>
+          <button id="resetCreditBtn" class="btn secondary" style="opacity:1;width:auto;height:auto;padding:4px 8px;font-size:12px;">Reset Credit</button>
+        </div>
+        <div style="text-align:right; position: relative;">
+          <div class="small">Remaining Bullets</div>
+          <div class="credit" id="bulletCount">100</div>
+          <button id="resetBulletsBtn" style="opacity:0; position:absolute; top:0; right:0; width:20px; height:20px; border:0; background:red; cursor:pointer;">R</button>
+        </div>
+      </div>
+
+      <div class="big-btn">
+        <button class="btn" id="startBtn" disabled>START — Dispense Bullet Box</button>
+        <button class="btn shot-btn" id="challengeShoe" disabled>Shooting Challenge – Shoe</button>
+        <button class="btn shot-btn" id="challengeSlides" disabled>Shooting Challenge – Slides</button>
+      </div>
+    </div>
+
+    <div class="play-area">
+      <div class="gun-view">
+        <div style="position:absolute;top:8px;left:8px;color:var(--muted);font-size:12px">Status: <span id="espStatus">Disconnected</span></div>
+        <div class="target" id="target">10</div>
+      </div>
+
+      <video id="preview" autoplay muted></video>
+      <video id="reviewVideo" controls style="display:none"></video>
+
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+        <button class="btn secondary" id="connectBtn">Connect</button>
+        <button class="btn secondary" id="insertBill">Insert Bill (TEST)</button>
+        <button class="btn secondary" id="reviewBtn">Review Last Game</button>
+      </div>
+
+      <div>
+        <div class="small">Last events</div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="buzzerAudio" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+
+  <script>
+    const PRICE = 100;
+    const MAX_BULLETS = 100;
+
+    let credit = parseInt(localStorage.getItem('credit')) || 0;
+    let bullets = parseInt(localStorage.getItem('bullets')) || MAX_BULLETS;
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    const creditEl = document.getElementById('credit');
+    const bulletEl = document.getElementById('bulletCount');
+    const startBtn = document.getElementById('startBtn');
+    const challengeShoe = document.getElementById('challengeShoe');
+    const challengeSlides = document.getElementById('challengeSlides');
+    const insertBill = document.getElementById('insertBill');
+    const reviewBtn = document.getElementById('reviewBtn');
+    const resetBulletsBtn = document.getElementById('resetBulletsBtn');
+    const resetCreditBtn = document.getElementById('resetCreditBtn');
+    const logEl = document.getElementById('log');
+    const preview = document.getElementById('preview');
+    const reviewVideo = document.getElementById('reviewVideo');
+    const buzzerAudio = document.getElementById('buzzerAudio');
+
+    creditEl.textContent = `₱${credit}`;
+    bulletEl.textContent = bullets;
+
+    function addLog(text){
+      const time = new Date().toLocaleTimeString();
+      logEl.insertAdjacentHTML('afterbegin', `<div>[${time}] ${text}</div>`);
+    }
+
+    async function setupCamera(){
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        preview.srcObject = stream;
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          reviewVideo.src = URL.createObjectURL(blob);
+          reviewVideo.style.display = 'block';
+          preview.style.display = 'none';
+          recordedChunks = [];
+        };
+        addLog("Camera ready");
+        enableGameButtons();
+      }catch(e){
+        addLog("Camera error: " + e.message);
+      }
+    }
+
+    function enableGameButtons(){
+      if(credit >= PRICE && mediaRecorder){
+        startBtn.disabled = false;
+        challengeShoe.disabled = false;
+        challengeSlides.disabled = false;
+      }
+    }
+
+    insertBill.addEventListener('click', ()=>{
+      credit += PRICE;
+      creditEl.textContent = `₱${credit}`;
+      localStorage.setItem('credit', credit);
+      addLog(`Bill inserted: ₱${PRICE}`);
+      enableGameButtons();
+    });
+
+    startBtn.addEventListener('click', ()=>{
+      if(credit<PRICE){ addLog("Not enough credit"); return; }
+      if(bullets<=0){ addLog("No bullets remaining"); return; }
+      bullets--;
+      bulletEl.textContent = bullets;
+      addLog("Dispensing bullet box... Remaining: " + bullets);
+      credit -= PRICE;
+      creditEl.textContent = `₱${credit}`;
+      localStorage.setItem('credit', credit);
+      localStorage.setItem('bullets', bullets);
+    });
+
+    function startShootingChallenge(buttonName){
+      if(!mediaRecorder){ addLog("Camera not ready"); return; }
+      if(credit < PRICE){ addLog("Not enough credit"); return; }
+      if(bullets <=0){ addLog("No bullets remaining"); return; }
+
+      bullets--;
+      bulletEl.textContent = bullets;
+      credit -= PRICE;
+      creditEl.textContent = `₱${credit}`;
+      localStorage.setItem('credit', credit);
+      localStorage.setItem('bullets', bullets);
+
+      addLog(buttonName + " started");
+
+      if(mediaRecorder.state === "inactive") {
+        recordedChunks = [];
+        mediaRecorder.start();
+      }
+
+      // Stop recording automatically after 40s
+      setTimeout(()=>{
+        if(mediaRecorder.state==="recording") mediaRecorder.stop();
+        buzzerAudio.play();
+        addLog(buttonName + " finished with buzzer");
+      },40000);
+    }
+
+    challengeShoe.addEventListener('click', ()=>startShootingChallenge("Shooting Challenge – Shoe"));
+    challengeSlides.addEventListener('click', ()=>startShootingChallenge("Shooting Challenge – Slides"));
+
+    reviewBtn.addEventListener('click', ()=>{
+      if(reviewVideo.src){ 
+        reviewVideo.style.display='block';
+        preview.style.display='none';
+        reviewVideo.play(); 
+        addLog("Reviewing last game"); 
+      }
+      else addLog("No recording available");
+    });
+
+    resetBulletsBtn.addEventListener('click', ()=>{
+      bullets = MAX_BULLETS;
+      bulletEl.textContent = bullets;
+      localStorage.setItem('bullets', bullets);
+      addLog("Bullet count reset to 100");
+    });
+
+    resetCreditBtn.addEventListener('click', ()=>{
+      credit = 0;
+      creditEl.textContent = `₱${credit}`;
+      localStorage.setItem('credit', credit);
+      addLog("Credit reset to 0");
+      enableGameButtons();
+    });
+
+    setupCamera();
+    addLog("App ready");
+  </script>
+</body>
+</html>
